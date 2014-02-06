@@ -44,7 +44,7 @@ Thats pretty much it.
 **Hint:** if you're using Bash you can make it execute command on special
 keysequence, for example I have `qr` bound to `Ctrl+]` in `~/.bashrc`:
 ```
-bind -x '"\C-]":qr'
+bind '"\C-]":"\C-u\C-kqr\C-j"'
 ```
 this way using QuickRun is even more convinient.
 
