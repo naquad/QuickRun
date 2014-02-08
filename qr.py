@@ -135,7 +135,7 @@ class QR(urwid.Frame):
         self.grid.contents[:] = [
             (item, self.grid.options('given', self.max_width))
             for item in self.items
-            if text in item.name
+            if text in item.name.lower()
         ]
 
         if len(self.grid.contents):
