@@ -144,6 +144,12 @@ class QR(urwid.Frame):
     PASS_TO_GRID = ['up', 'down', 'left', 'right']
 
     def keypress(self, size, key):
+        # an ugly hack to make page up/down to work at least somehow
+        if key == 'page up':
+            key = 'left'
+        elif key == 'page down':
+            key = 'right'
+
         if key == 'esc':
             raise urwid.ExitMainLoop()
         elif key == 'enter':
