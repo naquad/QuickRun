@@ -172,7 +172,7 @@ class QR(urwid.Frame):
     def exec_cmd(self):
         current = self.grid.focus
         if current is not None:
-            self.command = current.command
+            self.command = current
             raise urwid.ExitMainLoop()
 
 def main():
@@ -193,8 +193,8 @@ def main():
     sys.stdout.flush()
     sys.stderr.flush()
     if qr.command is not None:
-        print(qr.command, file=sys.stderr)
-        os.execl('/bin/sh', '/bin/sh', '-c', qr.command)
+        print('\033]2;%s\a%s' % (qr.command.name, qr.command.command), file=sys.stderr)
+        os.execl('/bin/sh', '/bin/sh', '-c', qr.command.command)
 
 if __name__ == '__main__':
     main()
