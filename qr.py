@@ -193,9 +193,8 @@ def main():
     sys.stdout.flush()
     sys.stderr.flush()
     if qr.command is not None:
-        print('\033]2;%s\a%s' % (qr.command.name, qr.command.command), file=sys.stderr)
-        sys.stderr.flush()
-        os.execl('/bin/sh', '/bin/sh', '-c', qr.command.command)
+        print('%s\n\033]2;%s\a' % (qr.command.command, qr.command.name), end='')
+        os.execl('/bin/sh', '/bin/sh', '-c', qr.command.command,)
 
 if __name__ == '__main__':
     main()
