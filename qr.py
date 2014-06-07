@@ -6,13 +6,13 @@ import os
 import re
 import signal
 from operator import itemgetter
-from urwid.canvas import CompositeCanvas
 
 PALETTE = [
     ('body', '', '', 'standout'),
     ('focus', 'light magenta', '', 'standout'),
     ('head', 'brown', ''),
-    ('input', 'underline', '')
+    ('input', 'underline', ''),
+    ('group', 'yellow', '')
 ]
 
 class ConfigError(RuntimeError):
@@ -20,20 +20,23 @@ class ConfigError(RuntimeError):
 
 class Config:
     ITEM = re.compile('^\s*([^:]+?)\s*:\s*(.+)$')
+    GROUP = re.compile('^\s*\{\s*(.*?)\s*\}\s*$')
 
     def __init__(self, path=None):
         if path is None:
-            path = os.path.join(os.environ['HOME'], '.qr.conf')
+            path = os.path.join(os.environ['HOME'], '.qr2.conf')
 
-        self.items = []
+        self.groups = []
         self.maxlen = 0
         self.read(path)
 
     def empty(self):
-        return not self.items
+        return not self.groups
 
     def read(self, path):
         self.path = path
+        group = ''
+        groups = {}
 
         try:
             with open(path, 'r') as f:
@@ -44,6 +47,11 @@ class Config:
 
                     match = self.ITEM.match(item)
                     if match is None:
+                        match = self.GROUP.match(item)
+                        if match is not None:
+                            group = match.group(1)
+                            continue
+
                         raise ConfigError('Invalid entry in %s:%d: %s' % (
                             path,
                             lno + 1,
@@ -54,9 +62,14 @@ class Config:
                     nl = len(name)
                     if nl > self.maxlen:
                         self.maxlen = nl
-                    self.items.append((name, match.group(2)))
+                    groups.setdefault(group, [])
+                    groups[group].append((name, match.group(2)))
 
-            self.items.sort(key=itemgetter(0))
+            key = itemgetter(0)
+            for group, items in sorted(groups.items(), key=key):
+                items.sort(key=key)
+                self.groups.append((group, items))
+
         except FileNotFoundError:
             pass
 
@@ -65,6 +78,26 @@ class CmdWidget(urwid.AttrMap):
         self.name = name
         self.command = command
         urwid.AttrMap.__init__(self, urwid.SelectableIcon(name, 0), 'body', 'focus')
+
+    def match(self, text):
+        return text in self.name.lower()
+
+class GroupWidget(urwid.AttrMap):
+    filler = urwid.SolidFill('-')
+
+    def __init__(self, name):
+        self.name = name
+
+        inner = urwid.Columns([
+            self.filler,
+            (urwid.PACK, urwid.Text(name)),
+            self.filler
+        ], 1, box_columns=[0, 2])
+
+        urwid.AttrMap.__init__(self, inner, 'group')
+
+    def selectable(self):
+        return False
 
 class ReadlineEdit(urwid.Edit):
     WORD_FW = re.compile(r'\S+\s')
@@ -113,11 +146,9 @@ class FocusNoCursor(urwid.Filler):
 class QR(urwid.Frame):
     def __init__(self, config):
         self.command = None
-
-        self.items = [CmdWidget(*item) for item in config.items]
-        self.max_width = config.maxlen
-        self.grid = urwid.GridFlow(self.items, self.max_width, 1, 0, 'left')
-        self.grid.set_focus(0)
+        self.config = config
+        self._build_widgets()
+        self._populate_pile()
 
         self.filter = ReadlineEdit('')
         urwid.connect_signal(self.filter, 'change', self.on_filter)
@@ -127,29 +158,64 @@ class QR(urwid.Frame):
             urwid.AttrMap(self.filter, 'input')
         ], 1)
 
-        urwid.Frame.__init__(self, FocusNoCursor(self.grid, 'top'), header=header, focus_part='header')
+        urwid.Frame.__init__(self, FocusNoCursor(self.pile, 'top'), header=header, focus_part='header')
+
+    def _build_widgets(self):
+        self.pile = urwid.Pile([])
+        self._widgets = []
+        opts = self.pile.options()
+
+        for group, items in self.config.groups:
+            out = [None, None, None]
+
+            if group:
+                out[0] = (GroupWidget(group), opts)
+
+            out[1] = (urwid.GridFlow([], self.config.maxlen, 1, 0, urwid.LEFT), opts)
+            go = out[1][0].options()
+            out[2] = [
+                (CmdWidget(*item), go)
+                for item in items
+            ]
+
+            self._widgets.append(out)
+
+        self._not_found = (urwid.Columns([
+            urwid.BigText('Test', urwid.HalfBlock7x7Font())
+        ]), opts)
+
+    def _populate_pile(self, search=None):
+        result = []
+        opts = self.pile.options()
+
+        for i, (gw, gfw, cmds) in enumerate(self._widgets):
+            if search:
+                cmds = [cmd for cmd in cmds if cmd[0].match(search)]
+                if not cmds:
+                    continue
+
+            if gw:
+                result.append(gw)
+
+            result.append(gfw)
+            gfw[0].contents = cmds
+            gfw[0].set_focus(0)
+
+        if not result:
+            result.append(self._not_found)
+
+        self.pile.contents = result
+        idx = int(not isinstance(result[0][0], urwid.GridFlow))
+        if idx < len(result):
+            self.pile.set_focus(idx)
 
     def on_filter(self, _, text):
-        text = text.lower()
-
-        self.grid.contents[:] = [
-            (item, self.grid.options('given', self.max_width))
-            for item in self.items
-            if text in item.name.lower()
-        ]
-
-        if len(self.grid.contents):
-            self.grid.set_focus(0)
+        self._populate_pile(text.lower())
 
     PASS_TO_GRID = ['up', 'down', 'left', 'right']
 
     def keypress(self, size, key):
         # an ugly hack to make page up/down to work at least somehow
-        if key == 'page up':
-            key = 'left'
-        elif key == 'page down':
-            key = 'right'
-
         if key == 'esc':
             raise urwid.ExitMainLoop()
         elif key == 'enter':
@@ -167,11 +233,12 @@ class QR(urwid.Frame):
 
             return self.body.keypress((maxcol, maxrow), key)
         else:
-            return urwid.Frame.keypress(self, size, key)
+            return self.__super.keypress(size, key)
 
     def exec_cmd(self):
-        current = self.grid.focus
-        if current is not None:
+        current = self.pile.focus
+        current = current and current.focus
+        if isinstance(current, CmdWidget):
             self.command = current
             raise urwid.ExitMainLoop()
 
