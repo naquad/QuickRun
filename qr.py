@@ -24,7 +24,7 @@ class Config:
 
     def __init__(self, path=None):
         if path is None:
-            path = os.path.join(os.environ['HOME'], '.qr2.conf')
+            path = os.path.join(os.environ['HOME'], '.qr.conf')
 
         self.groups = []
         self.maxlen = 0
