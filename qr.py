@@ -256,7 +256,7 @@ def main():
     signal.signal(signal.SIGTERM, exit_main_loop)
 
     qr = QR(config)
-    urwid.MainLoop(qr, PALETTE).run()
+    urwid.MainLoop(qr, PALETTE, handle_mouse=False).run()
     sys.stdout.flush()
     sys.stderr.flush()
     if qr.command is not None:
