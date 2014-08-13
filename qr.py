@@ -180,9 +180,11 @@ class QR(urwid.Frame):
 
             self._widgets.append(out)
 
-        self._not_found = (urwid.Columns([
-            urwid.BigText('Test', urwid.HalfBlock7x7Font())
-        ]), opts)
+        nf = urwid.BigText('Not found', urwid.HalfBlock5x4Font())
+        nf = urwid.Padding(nf, 'center', 'clip')
+        nf = urwid.Pile([urwid.Divider(), nf])
+
+        self._not_found = (nf, opts)
 
     def _populate_pile(self, search=None):
         result = []
