@@ -21,57 +21,65 @@ class ConfigError(RuntimeError):
 class Config:
     ITEM = re.compile('^\s*([^:]+?)\s*:\s*(.+)$')
     GROUP = re.compile('^\s*\{\s*(.*?)\s*\}\s*$')
+    INCLUDE = re.compile('^\s*source\s+(.+)\s*$')
 
     def __init__(self, path=None):
-        if path is None:
-            path = os.path.join(os.environ['HOME'], '.qr.conf')
-
         self.groups = []
         self.maxlen = 0
-        self.read(path)
+        self.path = None
+        self.read(path or os.path.expanduser('~/.qr.conf'))
 
     def empty(self):
         return not self.groups
 
-    def read(self, path):
-        self.path = path
+    def read(self, conf):
+        self.path = conf
         group = ''
         groups = {}
+        files = [conf]
 
         try:
-            with open(path, 'r') as f:
-                for lno, line in enumerate(f):
-                    item = line.strip()
-                    if item == '' or item.startswith('#'):
-                        continue
-
-                    match = self.ITEM.match(item)
-                    if match is None:
-                        match = self.GROUP.match(item)
-                        if match is not None:
-                            group = match.group(1)
+            while files:
+                group = ''
+                path = files.pop(0)
+                with open(path, 'r') as f:
+                    for lno, line in enumerate(f):
+                        item = line.strip()
+                        if item == '' or item.startswith('#'):
                             continue
 
-                        raise ConfigError('Invalid entry in %s:%d: %s' % (
-                            path,
-                            lno + 1,
-                            line
-                        ))
+                        match = self.ITEM.match(item)
+                        if match is None:
+                            match = self.GROUP.match(item)
+                            if match is not None:
+                                group = match.group(1)
+                                continue
 
-                    name = match.group(1)
-                    nl = len(name)
-                    if nl > self.maxlen:
-                        self.maxlen = nl
-                    groups.setdefault(group, [])
-                    groups[group].append((name, match.group(2)))
+                            match = self.INCLUDE.match(item)
+                            if match is not None:
+                                fname = os.path.join(os.path.dirname(path), match.group(1))
+                                files.append(fname)
+                                continue
 
-            key = itemgetter(0)
-            for group, items in sorted(groups.items(), key=key):
-                items.sort(key=key)
-                self.groups.append((group, items))
+                            raise ConfigError('Invalid entry in %s:%d: %s' % (
+                                path,
+                                lno + 1,
+                                line
+                            ))
 
+                        name = match.group(1)
+                        nl = len(name)
+                        if nl > self.maxlen:
+                            self.maxlen = nl
+                        groups.setdefault(group, [])
+                        groups[group].append((name, match.group(2)))
         except FileNotFoundError:
             pass
+
+        key = itemgetter(0)
+        for group, items in sorted(groups.items(), key=key):
+            items.sort(key=key)
+            self.groups.append((group, items))
 
 class CmdWidget(urwid.AttrMap):
     def __init__(self, name, command):
@@ -188,7 +196,6 @@ class QR(urwid.Frame):
 
     def _populate_pile(self, search=None):
         result = []
-        opts = self.pile.options()
 
         for i, (gw, gfw, cmds) in enumerate(self._widgets):
             if search:
