@@ -5,6 +5,7 @@ import urwid.curses_display
 import os
 import re
 import signal
+from collections import Counter
 from operator import itemgetter
 
 PALETTE = [
@@ -85,10 +86,15 @@ class CmdWidget(urwid.AttrMap):
     def __init__(self, name, command):
         self.name = name
         self.command = command
+        self._name_lowered = name.lower()
         urwid.AttrMap.__init__(self, urwid.SelectableIcon(name, 0), 'body', 'focus')
 
-    def match(self, text):
-        return text in self.name.lower()
+    def match(self, needle):
+        for i in self._name_lowered:
+            if i in needle and needle[i] > 0:
+                needle[i] -= 1
+
+        return sum(needle.values()) == 0
 
 class GroupWidget(urwid.AttrMap):
     filler = urwid.SolidFill('-')
@@ -197,9 +203,12 @@ class QR(urwid.Frame):
     def _populate_pile(self, search=None):
         result = []
 
+        if search is not None and search != '':
+            search = dict(Counter(search.lower()))
+
         for i, (gw, gfw, cmds) in enumerate(self._widgets):
             if search:
-                cmds = [cmd for cmd in cmds if cmd[0].match(search)]
+                cmds = [cmd for cmd in cmds if cmd[0].match(search.copy())]
                 if not cmds:
                     continue
 
