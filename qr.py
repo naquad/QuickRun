@@ -85,11 +85,8 @@ class CmdWidget(urwid.AttrMap):
     def __init__(self, name, command):
         self.name = name
         self.command = command
-        self._name_lowered = name.lower()
+        self.name_lowered = name.lower()
         urwid.AttrMap.__init__(self, urwid.SelectableIcon(name, 0), 'body', 'focus')
-
-    def match(self, needle):
-        return needle.search(self._name_lowered)
 
 class GroupWidget(urwid.AttrMap):
     filler = urwid.SolidFill('-')
@@ -198,14 +195,22 @@ class QR(urwid.Frame):
     def _populate_pile(self, search=None):
         result = []
 
-        if search is not None and search != '':
+        if search:
             search = re.compile('.*?'.join([re.escape(x) for x in search.lower()]))
 
         for i, (gw, gfw, cmds) in enumerate(self._widgets):
             if search:
-                cmds = [cmd for cmd in cmds if cmd[0].match(search)]
-                if not cmds:
+                matches = []
+
+                for cmd in cmds:
+                    match = search.search(cmd[0].name_lowered)
+                    if match:
+                        matches.append((len(match.group()), match.start(), cmd))
+
+                if not matches:
                     continue
+
+                cmds = [cmd for _, _, cmd in sorted(matches, key=itemgetter(slice(0, 2)))]
 
             if gw:
                 result.append(gw)
